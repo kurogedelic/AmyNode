@@ -1,0 +1,19 @@
+{
+  "name": "amynode",
+  "version": "1.0.0",
+  "description": "Visual patch editor for AMY audio library with Arduino code generation",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": ["audio", "visual-programming", "arduino", "amy"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^5.0.0"
+  },
+  "dependencies": {
+  }
+}

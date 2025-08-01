@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMY WASM Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #fff;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #333;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #ff6600;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #ff8533;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 3px;
+        }
+        .success { background: rgba(76, 175, 80, 0.2); }
+        .error { background: rgba(244, 67, 54, 0.2); }
+        .info { background: rgba(33, 150, 243, 0.2); }
+    </style>
+</head>
+<body>
+    <h1>AMY WASM Integration Test</h1>
+    
+    <div class="test-section">
+        <h2>System Information</h2>
+        <div id="system-info"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>AMY WASM Loading</h2>
+        <button onclick="testAmyLoad()">Load AMY WASM Module</button>
+        <div id="amy-load-status"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Basic Oscillator Test</h2>
+        <button onclick="testBasicOscillator()">Test Sine Wave</button>
+        <button onclick="testPulseWave()">Test Pulse Wave</button>
+        <button onclick="testSawWave()">Test Sawtooth Wave</button>
+        <button onclick="stopAudio()">Stop All</button>
+        <div id="oscillator-status"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>AMY Feature Test</h2>
+        <button onclick="testKarplusStrong()">Test Karplus-Strong</button>
+        <button onclick="testNoise()">Test Noise</button>
+        <button onclick="testFM()">Test FM Synthesis</button>
+        <div id="features-status"></div>
+    </div>
+
+    <script type="module">
+        import { amyWASM } from './src/audio/AmyWASM.js';
+        
+        let audioContext = null;
+        let currentOscillator = -1;
+        
+        // System information
+        function updateSystemInfo() {
+            const info = {
+                'WebAssembly Support': typeof WebAssembly !== 'undefined',
+                'AudioContext Support': typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined',
+                'User Agent': navigator.userAgent,
+                'Sample Rate': audioContext ? audioContext.sampleRate : 'Not initialized'
+            };
+            
+            const infoDiv = document.getElementById('system-info');
+            infoDiv.innerHTML = Object.entries(info)
+                .map(([key, value]) => `<strong>${key}:</strong> ${value}`)
+                .join('<br>');
+        }
+        
+        // Initialize audio context
+        async function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
+            }
+            updateSystemInfo();
+            return audioContext;
+        }
+        
+        // Test AMY WASM loading
+        window.testAmyLoad = async function() {
+            const statusDiv = document.getElementById('amy-load-status');
+            statusDiv.innerHTML = '<div class="status info">Loading AMY WASM module...</div>';
+            
+            try {
+                await initAudio();
+                const success = await amyWASM.initialize(audioContext);
+                
+                if (success) {
+                    const info = amyWASM.getInfo();
+                    statusDiv.innerHTML = `
+                        <div class="status success">✅ AMY WASM loaded successfully!</div>
+                        <div><strong>Initialized:</strong> ${info.isInitialized}</div>
+                        <div><strong>Sample Rate:</strong> ${info.sampleRate} Hz</div>
+                        <div><strong>WASM Support:</strong> ${info.wasmSupport}</div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = '<div class="status error">❌ Failed to load AMY WASM module</div>';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+                console.error('AMY WASM test error:', error);
+            }
+        };
+        
+        // Test basic oscillator
+        window.testBasicOscillator = async function() {
+            const statusDiv = document.getElementById('oscillator-status');
+            
+            try {
+                await initAudio();
+                
+                if (!amyWASM.isInitialized) {
+                    await amyWASM.initialize(audioContext);
+                }
+                
+                // Stop previous oscillator
+                if (currentOscillator >= 0) {
+                    amyWASM.noteOff(currentOscillator);
+                }
+                
+                // Create new oscillator
+                currentOscillator = amyWASM.createOscillator({
+                    wave_type: 'SINE',
+                    frequency: 440,
+                    amplitude: 0.3
+                });
+                
+                statusDiv.innerHTML = `
+                    <div class="status success">✅ Sine wave playing at 440Hz</div>
+                    <div><strong>Oscillator ID:</strong> ${currentOscillator}</div>
+                `;
+                
+                // Stop after 2 seconds
+                setTimeout(() => {
+                    amyWASM.noteOff(currentOscillator);
+                    statusDiv.innerHTML += '<div class="status info">🔇 Stopped after 2 seconds</div>';
+                }, 2000);
+                
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+            }
+        };
+        
+        // Test pulse wave
+        window.testPulseWave = async function() {
+            try {
+                await initAudio();
+                
+                if (currentOscillator >= 0) {
+                    amyWASM.noteOff(currentOscillator);
+                }
+                
+                currentOscillator = amyWASM.createOscillator({
+                    wave_type: 'PULSE',
+                    frequency: 330,
+                    amplitude: 0.3,
+                    duty: 0.25
+                });
+                
+                document.getElementById('oscillator-status').innerHTML = 
+                    '<div class="status success">✅ Pulse wave playing at 330Hz (25% duty)</div>';
+                
+                setTimeout(() => amyWASM.noteOff(currentOscillator), 2000);
+            } catch (error) {
+                console.error('Pulse wave test error:', error);
+            }
+        };
+        
+        // Test sawtooth wave
+        window.testSawWave = async function() {
+            try {
+                await initAudio();
+                
+                if (currentOscillator >= 0) {
+                    amyWASM.noteOff(currentOscillator);
+                }
+                
+                currentOscillator = amyWASM.createOscillator({
+                    wave_type: 'SAW_DOWN',
+                    frequency: 220,
+                    amplitude: 0.3
+                });
+                
+                document.getElementById('oscillator-status').innerHTML = 
+                    '<div class="status success">✅ Sawtooth wave playing at 220Hz</div>';
+                
+                setTimeout(() => amyWASM.noteOff(currentOscillator), 2000);
+            } catch (error) {
+                console.error('Sawtooth wave test error:', error);
+            }
+        };
+        
+        // Test Karplus-Strong synthesis
+        window.testKarplusStrong = async function() {
+            try {
+                await initAudio();
+                
+                if (currentOscillator >= 0) {
+                    amyWASM.noteOff(currentOscillator);
+                }
+                
+                currentOscillator = amyWASM.createOscillator({
+                    wave_type: 'KS',
+                    frequency: 110,
+                    amplitude: 0.5
+                });
+                
+                document.getElementById('features-status').innerHTML = 
+                    '<div class="status success">✅ Karplus-Strong synthesis at 110Hz</div>';
+                
+                setTimeout(() => amyWASM.noteOff(currentOscillator), 3000);
+            } catch (error) {
+                console.error('Karplus-Strong test error:', error);
+            }
+        };
+        
+        // Test noise
+        window.testNoise = async function() {
+            try {
+                await initAudio();
+                
+                if (currentOscillator >= 0) {
+                    amyWASM.noteOff(currentOscillator);
+                }
+                
+                currentOscillator = amyWASM.createOscillator({
+                    wave_type: 'NOISE',
+                    amplitude: 0.2
+                });
+                
+                document.getElementById('features-status').innerHTML = 
+                    '<div class="status success">✅ White noise generation</div>';
+                
+                setTimeout(() => amyWASM.noteOff(currentOscillator), 1500);
+            } catch (error) {
+                console.error('Noise test error:', error);
+            }
+        };
+        
+        // Test FM synthesis
+        window.testFM = async function() {
+            try {
+                await initAudio();
+                
+                if (currentOscillator >= 0) {
+                    amyWASM.noteOff(currentOscillator);
+                }
+                
+                currentOscillator = amyWASM.createOscillator({
+                    wave_type: 'FM',
+                    frequency: 261.63, // Middle C
+                    amplitude: 0.4
+                });
+                
+                document.getElementById('features-status').innerHTML = 
+                    '<div class="status success">✅ FM synthesis at middle C</div>';
+                
+                setTimeout(() => amyWASM.noteOff(currentOscillator), 2500);
+            } catch (error) {
+                console.error('FM synthesis test error:', error);
+            }
+        };
+        
+        // Stop all audio
+        window.stopAudio = function() {
+            if (currentOscillator >= 0) {
+                amyWASM.noteOff(currentOscillator);
+                currentOscillator = -1;
+            }
+            amyWASM.stopAll();
+            document.getElementById('oscillator-status').innerHTML = 
+                '<div class="status info">🔇 All audio stopped</div>';
+        };
+        
+        // Initialize system info on load
+        updateSystemInfo();
+    </script>
+</body>
+</html>
