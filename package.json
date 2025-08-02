@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build --base=/AmyNode/",
     "preview": "vite preview"
   },
   "keywords": ["audio", "visual-programming", "arduino", "amy", "synthesizer"],
