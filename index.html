@@ -6,6 +6,7 @@
     <title>AmyNode - Visual Audio Patch Editor</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
     <link rel="stylesheet" href="/src/styles.css">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
 </head>
 <body>
     <div class="app-container">
@@ -24,16 +25,16 @@
                 </div>
             </div>
             <div class="header-controls">
-                <button id="undo-btn" class="control-btn" disabled>↶ Undo</button>
-                <button id="redo-btn" class="control-btn" disabled>↷ Redo</button>
+                <button id="undo-btn" class="control-btn" disabled><i class="ph ph-arrow-u-up-left"></i> Undo</button>
+                <button id="redo-btn" class="control-btn" disabled><i class="ph ph-arrow-u-up-right"></i> Redo</button>
                 <div class="control-separator"></div>
-                <button id="play-btn" class="control-btn">▶ Play</button>
-                <button id="stop-btn" class="control-btn">◼ Stop</button>
+                <button id="play-btn" class="control-btn"><i class="ph ph-play"></i> Play</button>
+                <button id="stop-btn" class="control-btn"><i class="ph ph-stop"></i> Stop</button>
                 <div class="control-separator"></div>
-                <button id="presets-btn" class="control-btn">📋 Presets</button>
-                <button id="save-btn" class="control-btn">💾 Save</button>
-                <button id="load-btn" class="control-btn">📁 Load</button>
-                <button id="export-btn" class="control-btn">📥 Export Code <span class="beta-label">BETA</span></button>
+                <button id="presets-btn" class="control-btn"><i class="ph ph-folder-open"></i> Presets</button>
+                <button id="save-btn" class="control-btn"><i class="ph ph-floppy-disk"></i> Save</button>
+                <button id="load-btn" class="control-btn"><i class="ph ph-folder"></i> Load</button>
+                <button id="export-btn" class="control-btn"><i class="ph ph-download"></i> Export Code <span class="beta-label">BETA</span></button>
                 <input type="file" id="file-input" accept=".json" style="display: none;">
             </div>
         </header>

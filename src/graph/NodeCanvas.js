@@ -77,16 +77,30 @@ export class NodeCanvas {
     }
     
     setupHighDPI() {
+        // Get the canvas container to ensure we use the full available space
+        const container = this.canvas.parentElement;
+        const containerRect = container.getBoundingClientRect();
+        
+        // Use container dimensions if available, fallback to canvas rect
         const rect = this.canvas.getBoundingClientRect();
+        const width = containerRect.width > 0 ? containerRect.width : rect.width;
+        const height = containerRect.height > 0 ? containerRect.height : rect.height;
+        
+        // Ensure minimum dimensions
+        const finalWidth = Math.max(width, 800);
+        const finalHeight = Math.max(height, 600);
+        
         const dpr = window.devicePixelRatio || 1;
         
-        this.canvas.width = rect.width * dpr;
-        this.canvas.height = rect.height * dpr;
+        this.canvas.width = finalWidth * dpr;
+        this.canvas.height = finalHeight * dpr;
         
         this.ctx.scale(dpr, dpr);
         
-        this.canvas.style.width = rect.width + 'px';
-        this.canvas.style.height = rect.height + 'px';
+        this.canvas.style.width = finalWidth + 'px';
+        this.canvas.style.height = finalHeight + 'px';
+        
+        console.log(`Canvas resized: ${finalWidth} x ${finalHeight} DPR: ${dpr}`);
     }
     
     bindEvents() {
@@ -214,6 +228,9 @@ export class NodeCanvas {
                 this.selectedNodes.add(node);
             }
             
+            // Update property panel
+            this.updatePropertyPanel();
+            
             // Start dragging
             const canvasPos = this.screenToCanvas(x, y);
             this.draggedNode = node;
@@ -234,6 +251,7 @@ export class NodeCanvas {
         } else {
             // Clear selection
             this.selectedNodes.clear();
+            this.updatePropertyPanel();
         }
     }
     
@@ -679,5 +697,131 @@ export class NodeCanvas {
         const dy = point.y - yy;
         
         return Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    // Update property panel based on selected nodes
+    updatePropertyPanel() {
+        const propertiesContent = document.getElementById('properties-content');
+        if (!propertiesContent) return;
+        
+        // Clear current content
+        propertiesContent.innerHTML = '';
+        
+        if (this.selectedNodes.size === 0) {
+            // No selection
+            propertiesContent.innerHTML = '<p class="placeholder-text">Select a node to edit properties</p>';
+            return;
+        }
+        
+        if (this.selectedNodes.size === 1) {
+            // Single node selected
+            const node = Array.from(this.selectedNodes)[0];
+            this.renderNodeProperties(node, propertiesContent);
+        } else {
+            // Multiple nodes selected
+            propertiesContent.innerHTML = `<p class="placeholder-text">${this.selectedNodes.size} nodes selected</p>`;
+        }
+    }
+    
+    // Render properties for a single node
+    renderNodeProperties(node, container) {
+        // Create node title
+        const title = document.createElement('h3');
+        title.textContent = node.type.split('/')[1] || node.type;
+        title.className = 'node-title';
+        container.appendChild(title);
+        
+        // Render parameters
+        if (node.parameters && Object.keys(node.parameters).length > 0) {
+            Object.entries(node.parameters).forEach(([key, param]) => {
+                const group = document.createElement('div');
+                group.className = 'property-group';
+                
+                const label = document.createElement('label');
+                label.className = 'property-label';
+                label.textContent = param.label || key;
+                
+                let input;
+                
+                switch (param.type) {
+                    case 'number':
+                        input = document.createElement('input');
+                        input.type = 'number';
+                        input.className = 'property-input';
+                        input.value = param.value || param.default || 0;
+                        if (param.min !== undefined) input.min = param.min;
+                        if (param.max !== undefined) input.max = param.max;
+                        if (param.step !== undefined) input.step = param.step;
+                        
+                        input.addEventListener('input', (e) => {
+                            const newValue = parseFloat(e.target.value);
+                            node.setParameter(key, newValue);
+                        });
+                        break;
+                        
+                    case 'string':
+                        input = document.createElement('input');
+                        input.type = 'text';
+                        input.className = 'property-input';
+                        input.value = param.value || param.default || '';
+                        
+                        input.addEventListener('input', (e) => {
+                            node.setParameter(key, e.target.value);
+                        });
+                        break;
+                        
+                    case 'select':
+                        input = document.createElement('select');
+                        input.className = 'property-input';
+                        
+                        if (param.options) {
+                            param.options.forEach(option => {
+                                const optionEl = document.createElement('option');
+                                optionEl.value = option.value || option;
+                                optionEl.textContent = option.label || option;
+                                if (option.value === param.value || option === param.value) {
+                                    optionEl.selected = true;
+                                }
+                                input.appendChild(optionEl);
+                            });
+                        }
+                        
+                        input.addEventListener('change', (e) => {
+                            node.setParameter(key, e.target.value);
+                        });
+                        break;
+                        
+                    case 'boolean':
+                        input = document.createElement('input');
+                        input.type = 'checkbox';
+                        input.className = 'property-checkbox';
+                        input.checked = param.value || param.default || false;
+                        
+                        input.addEventListener('change', (e) => {
+                            node.setParameter(key, e.target.checked);
+                        });
+                        break;
+                        
+                    default:
+                        input = document.createElement('input');
+                        input.type = 'text';
+                        input.className = 'property-input';
+                        input.value = param.value || param.default || '';
+                        
+                        input.addEventListener('input', (e) => {
+                            node.setParameter(key, e.target.value);
+                        });
+                }
+                
+                group.appendChild(label);
+                group.appendChild(input);
+                container.appendChild(group);
+            });
+        } else {
+            const noParams = document.createElement('p');
+            noParams.className = 'placeholder-text';
+            noParams.textContent = 'No parameters available';
+            container.appendChild(noParams);
+        }
     }
 }

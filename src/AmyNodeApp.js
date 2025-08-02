@@ -80,24 +80,36 @@ export class AmyNodeApp {
             return;
         }
         
-        // Create node canvas with our graph
-        this.nodeCanvas = new NodeCanvas(canvasElement, this.graph);
-        
-        // Expose canvas for compatibility
-        this.canvas = {
-            // Compatibility layer for existing code
-            setDirty: () => this.nodeCanvas.render(),
-            draw: () => this.nodeCanvas.render(),
-            ds: {
-                offset: this.nodeCanvas.offset,
-                scale: this.nodeCanvas.scale
-            },
-            selected_nodes: [],
-            selectNodes: (nodes) => {
-                this.nodeCanvas.selectedNodes.clear();
-                nodes.forEach(node => this.nodeCanvas.selectedNodes.add(node));
-            }
-        };
+        // Ensure DOM layout is complete before creating canvas
+        setTimeout(() => {
+            // Create node canvas with our graph
+            this.nodeCanvas = new NodeCanvas(canvasElement, this.graph);
+            
+            // Force a resize after a short delay to ensure proper sizing
+            setTimeout(() => {
+                if (this.nodeCanvas) {
+                    this.nodeCanvas.setupHighDPI();
+                    this.nodeCanvas.render();
+                }
+            }, 100);
+            
+            // Expose canvas for compatibility
+            const self = this;
+            this.canvas = {
+                // Compatibility layer for existing code
+                setDirty: () => self.nodeCanvas && self.nodeCanvas.render(),
+                draw: () => self.nodeCanvas && self.nodeCanvas.render(),
+                ds: {
+                    get offset() { return self.nodeCanvas ? self.nodeCanvas.offset : {x: 0, y: 0}; },
+                    get scale() { return self.nodeCanvas ? self.nodeCanvas.scale : 1; }
+                },
+                selected_nodes: [],
+                selectNodes: (nodes) => {
+                    self.nodeCanvas.selectedNodes.clear();
+                    nodes.forEach(node => self.nodeCanvas.selectedNodes.add(node));
+                }
+            };
+        }, 10);
     }
     
     setupEventListeners() {
@@ -359,8 +371,36 @@ export class AmyNodeApp {
     }
     
     updateAudioConnections() {
-        // TODO: Update audio engine with current graph state
-        console.log('Updating audio connections');
+        if (!this.audioEngine.isRunning) {
+            console.log('Audio engine not running, skipping connection update');
+            return;
+        }
+        
+        console.log('Updating audio connections from graph state');
+        
+        // Update audio engine with current graph state
+        this.audioEngine.updateFromGraph(this.graph);
+        
+        // Check for output nodes and connect them
+        const outputNodes = this.graph.getNodes().filter(node => 
+            node.type === 'output' || node.type === 'amy/output'
+        );
+        
+        if (outputNodes.length > 0) {
+            console.log(`Found ${outputNodes.length} output node(s), audio should be connected`);
+        } else {
+            console.log('No output nodes found - adding default output connection');
+            // If no explicit output nodes, try to connect oscillators directly for testing
+            const oscillatorNodes = this.graph.getNodes().filter(node => 
+                node.type === 'oscillator' || node.type === 'amy/oscillator'
+            );
+            
+            if (oscillatorNodes.length > 0) {
+                console.log(`Found ${oscillatorNodes.length} oscillator(s) without output - enabling direct connection`);
+                // Enable direct oscillator connection for testing
+                this.audioEngine.enableDirectOscillatorOutput = true;
+            }
+        }
     }
     
     filterNodes(searchTerm) {

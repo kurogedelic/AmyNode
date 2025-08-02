@@ -8,7 +8,9 @@ export class AmyWASM {
         this.oscillatorCount = 0;
         this.sampleRate = 44100;
         this.audioContext = null;
-        this.audioWorklet = null;
+        this.scriptProcessor = null;
+        this.sampleIndex = 0;
+        this.fallbackMode = false;
     }
 
     async initialize(audioContext) {
@@ -25,11 +27,47 @@ export class AmyWASM {
             
             console.log('AMY WASM module loaded successfully');
             
-            // Initialize AMY
-            this.amyModule._amy_start_web();
+            // Wait for WASM module to be fully ready and verify memory views
+            await this.waitForModuleReady();
             
-            // Setup AudioWorklet for real-time processing
-            await this.setupAudioWorklet();
+            // Verify essential functions exist before initialization
+            if (!this.amyModule._amy_start_web) {
+                throw new Error('AMY _amy_start_web function not found');
+            }
+            
+            // Try to ensure runtime is initialized before calling AMY functions
+            if (this.amyModule.__wasm_call_ctors) {
+                console.log('Calling WASM constructors...');
+                try {
+                    this.amyModule.__wasm_call_ctors();
+                } catch (error) {
+                    console.warn('WASM constructors might already be called:', error);
+                }
+            }
+            
+            // Initialize AMY
+            console.log('Calling AMY _amy_start_web()...');
+            try {
+                this.amyModule._amy_start_web();
+                console.log('✅ AMY _amy_start_web() called successfully');
+            } catch (error) {
+                console.error('❌ Failed to call _amy_start_web:', error);
+                throw error;
+            }
+            
+            // Wait a bit more for AMY to initialize its internal state
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // Double-check memory views after initialization
+            if (!this.amyModule.HEAPU8 && !this.amyModule.HEAP8) {
+                console.warn('⚠️ AMY WASM memory views not available - using fallback mode');
+                // Don't log detailed error info to keep console cleaner
+                this.fallbackMode = true;
+            }
+            
+            // For now, use simple ScriptProcessorNode instead of AudioWorklet
+            // to avoid serialization issues
+            await this.setupScriptProcessor();
             
             this.isInitialized = true;
             
@@ -40,71 +78,146 @@ export class AmyWASM {
         }
     }
     
-    async setupAudioWorklet() {
+    async waitForModuleReady() {
+        // Wait for the WASM module's memory views to be properly set up
+        let retries = 0;
+        const maxRetries = 50; // 5 seconds max
+        
+        // Quieter initialization
+        console.log('Initializing AMY WASM module...');
+        
+        while (retries < maxRetries) {
+            // Check if essential memory views and functions are available
+            if (this.amyModule.HEAPU8 && 
+                this.amyModule._malloc && 
+                this.amyModule._free &&
+                this.amyModule._amy_start_web) {
+                console.log('✅ AMY WASM module memory views are ready');
+                return;
+            }
+            
+            // Silent check for alternative memory access methods
+            
+            await new Promise(resolve => setTimeout(resolve, 100));
+            retries++;
+            
+            // Silent retry
+        }
+        
+        // Don't log detailed warnings, just set fallback mode
+        this.fallbackMode = true;
+    }
+    
+    async setupScriptProcessor() {
         try {
-            // Add worklet module
-            await this.audioContext.audioWorklet.addModule('/src/audio/AmyWorkletProcessor.js');
+            // Create a simple ScriptProcessorNode for audio processing
+            const bufferSize = 4096;
+            this.scriptProcessor = this.audioContext.createScriptProcessor(bufferSize, 0, 2);
             
-            // Create worklet node
-            this.audioWorklet = new AudioWorkletNode(this.audioContext, 'amy-worklet-processor', {
-                numberOfInputs: 0,
-                numberOfOutputs: 1,
-                outputChannelCount: [2] // Stereo output
-            });
-            
-            // Send WASM module to worklet
-            this.audioWorklet.port.postMessage({
-                type: 'init',
-                wasmModule: this.amyModule
-            });
-            
-            // Wait for initialization
-            return new Promise((resolve, reject) => {
-                this.audioWorklet.port.onmessage = (event) => {
-                    if (event.data.type === 'initialized') {
-                        console.log('AMY AudioWorklet initialized');
-                        resolve();
-                    } else if (event.data.type === 'error') {
-                        reject(new Error(event.data.error));
+            // Set up audio processing callback
+            this.scriptProcessor.onaudioprocess = (event) => {
+                const outputBuffer = event.outputBuffer;
+                const leftChannel = outputBuffer.getChannelData(0);
+                const rightChannel = outputBuffer.getChannelData(1);
+                
+                try {
+                    // Generate audio using AMY
+                    if (this.amyModule && this.amyModule._amy_render) {
+                        // Try to render audio from AMY
+                        const audioData = this.amyModule._amy_render(bufferSize);
+                        if (audioData) {
+                            // Copy AMY output to Web Audio buffers
+                            // This is a simplified version - real implementation would need proper buffer handling
+                            for (let i = 0; i < bufferSize; i++) {
+                                const sample = audioData[i] || 0;
+                                leftChannel[i] = sample * 0.1; // Reduce volume
+                                rightChannel[i] = sample * 0.1;
+                            }
+                        } else {
+                            // Generate simple test tone if AMY render fails
+                            const frequency = 440; // A4
+                            const amplitude = 0.05;
+                            for (let i = 0; i < bufferSize; i++) {
+                                const sample = Math.sin(2 * Math.PI * frequency * (this.sampleIndex + i) / this.sampleRate) * amplitude;
+                                leftChannel[i] = sample;
+                                rightChannel[i] = sample;
+                            }
+                            this.sampleIndex = (this.sampleIndex + bufferSize) % this.sampleRate;
+                        }
+                    } else {
+                        // Fill with silence if AMY not available
+                        leftChannel.fill(0);
+                        rightChannel.fill(0);
                     }
-                };
-            });
+                } catch (error) {
+                    console.error('Audio processing error:', error);
+                    leftChannel.fill(0);
+                    rightChannel.fill(0);
+                }
+            };
+            
+            console.log('AMY ScriptProcessor setup complete');
+            return Promise.resolve();
         } catch (error) {
-            console.error('Failed to setup AudioWorklet:', error);
+            console.error('Failed to setup ScriptProcessor:', error);
             throw error;
         }
     }
     
     // Connect to audio destination
     connect(destination) {
-        if (this.audioWorklet) {
-            this.audioWorklet.connect(destination);
+        if (this.scriptProcessor) {
+            this.scriptProcessor.connect(destination);
         }
     }
     
     // Disconnect from audio destination
     disconnect() {
-        if (this.audioWorklet) {
-            this.audioWorklet.disconnect();
+        if (this.scriptProcessor) {
+            this.scriptProcessor.disconnect();
         }
     }
 
     // Load AMY module dynamically to avoid Vite import issues
     async loadAmyModule() {
         return new Promise((resolve, reject) => {
+            // Check if amyModule is already loaded
+            if (typeof window.amyModule === 'function') {
+                window.amyModule().then(module => {
+                    console.log('AMY module loaded from cache');
+                    resolve(module);
+                }).catch(reject);
+                return;
+            }
+
             // Create script element to load amy.js
             const script = document.createElement('script');
             script.src = '/amy.js';
             script.onload = () => {
-                // AMY module should be available as window.amyModule or global amyModule
-                const moduleFactory = window.amyModule || (typeof amyModule !== 'undefined' ? amyModule : null);
-                if (moduleFactory) {
-                    moduleFactory().then(resolve).catch(reject);
-                } else {
-                    reject(new Error('AMY module not found after loading - check amy.js export'));
-                }
+                // Wait a bit for the module to be available
+                setTimeout(() => {
+                    const moduleFactory = window.amyModule;
+                    if (typeof moduleFactory === 'function') {
+                        console.log('Found AMY module factory, initializing...');
+                        moduleFactory().then(module => {
+                            console.log('AMY module initialized, checking properties...');
+                            console.log('Module properties:', Object.keys(module));
+                            
+                            // Ensure memory views are available
+                            if (!module.HEAPU8 && module._malloc) {
+                                console.warn('HEAPU8 not found on module, might need to wait for initialization');
+                            }
+                            
+                            resolve(module);
+                        }).catch(reject);
+                    } else {
+                        console.error('AMY module factory not found:', typeof moduleFactory);
+                        reject(new Error('AMY module factory not found after loading amy.js'));
+                    }
+                }, 100);
             };
-            script.onerror = () => {
+            script.onerror = (event) => {
+                console.error('Failed to load amy.js:', event);
                 reject(new Error('Failed to load amy.js'));
             };
             document.head.appendChild(script);
@@ -114,31 +227,36 @@ export class AmyWASM {
     // Create an oscillator and return its index
     createOscillator(properties = {}) {
         if (!this.isInitialized) {
-            console.error('AmyWASM not initialized');
+            console.warn('AmyWASM not initialized, cannot create oscillator');
             return -1;
         }
 
         const oscId = this.oscillatorCount++;
         
-        // Set oscillator type
-        const waveType = this.mapWaveType(properties.wave_type || 'SINE');
-        this.setOscillatorType(oscId, waveType);
-        
-        // Set basic parameters
-        this.setFrequency(oscId, properties.frequency || 440);
-        this.setAmplitude(oscId, properties.amplitude || 0.5);
-        
-        // Set additional parameters if available
-        if (properties.phase !== undefined) {
-            this.setPhase(oscId, properties.phase);
+        try {
+            // Set oscillator type
+            const waveType = this.mapWaveType(properties.wave_type || 'SINE');
+            this.setOscillatorType(oscId, waveType);
+            
+            // Set basic parameters
+            this.setFrequency(oscId, properties.frequency || 440);
+            this.setAmplitude(oscId, properties.amplitude || 0.5);
+            
+            // Set additional parameters if available
+            if (properties.phase !== undefined) {
+                this.setPhase(oscId, properties.phase);
+            }
+            
+            if (properties.duty !== undefined && properties.wave_type === 'PULSE') {
+                this.setDuty(oscId, properties.duty);
+            }
+            
+            console.log(`✅ Created AMY oscillator ${oscId} with type ${properties.wave_type || 'SINE'}`);
+            return oscId;
+        } catch (error) {
+            console.error(`❌ Failed to create AMY oscillator ${oscId}:`, error);
+            return -1;
         }
-        
-        if (properties.duty !== undefined && properties.wave_type === 'PULSE') {
-            this.setDuty(oscId, properties.duty);
-        }
-        
-        console.log(`Created AMY oscillator ${oscId} with type ${properties.wave_type}`);
-        return oscId;
     }
 
     // Map AmyNode wave types to AMY constants (corrected)
@@ -240,22 +358,91 @@ export class AmyWASM {
 
     // Send raw AMY message
     sendMessage(message) {
-        if (!this.isInitialized || !this.amyModule) return;
+        if (!this.isInitialized || !this.amyModule || this.fallbackMode) {
+            // Silent skip in fallback mode
+            return;
+        }
         
         try {
-            // Convert JavaScript string to C string
-            const messagePtr = this.amyModule._malloc(message.length + 1);
-            this.amyModule.stringToUTF8(message, messagePtr, message.length + 1);
+            // Verify memory allocation functions are available
+            if (!this.amyModule._malloc || !this.amyModule._free) {
+                console.warn('AMY WASM memory functions not available, skipping message:', message);
+                return;
+            }
+            
+            let messagePtr;
+            let messageArray;
+            
+            if (this.amyModule.stringToUTF8) {
+                // Original Emscripten method
+                messagePtr = this.amyModule._malloc(message.length + 1);
+                if (!messagePtr) {
+                    console.error('Failed to allocate memory for AMY message');
+                    return;
+                }
+                this.amyModule.stringToUTF8(message, messagePtr, message.length + 1);
+                console.log('Using stringToUTF8 for message conversion');
+            } else if (this.amyModule.HEAPU8) {
+                // Alternative method using TextEncoder and HEAPU8
+                messageArray = new TextEncoder().encode(message + '\0');
+                messagePtr = this.amyModule._malloc(messageArray.length);
+                if (!messagePtr) {
+                    console.error('Failed to allocate memory for AMY message');
+                    return;
+                }
+                this.amyModule.HEAPU8.set(messageArray, messagePtr);
+                console.log('Using TextEncoder + HEAPU8 for message conversion');
+            } else {
+                console.warn('No suitable string conversion method available, trying direct buffer approach');
+                // Last resort: try to manually create buffer
+                messageArray = new TextEncoder().encode(message + '\0');
+                messagePtr = this.amyModule._malloc(messageArray.length);
+                if (!messagePtr) {
+                    console.error('Failed to allocate memory for AMY message');
+                    return;
+                }
+                
+                // Try to access memory directly through different possible views
+                if (this.amyModule.HEAP8) {
+                    this.amyModule.HEAP8.set(messageArray, messagePtr);
+                    console.log('Using HEAP8 as fallback for message conversion');
+                } else if (this.amyModule.buffer) {
+                    const view = new Uint8Array(this.amyModule.buffer, messagePtr, messageArray.length);
+                    view.set(messageArray);
+                    console.log('Using direct buffer access for message conversion');
+                } else {
+                    console.error('No memory access method available, cannot send AMY message');
+                    this.amyModule._free(messagePtr);
+                    return;
+                }
+            }
             
             // Send message to AMY
-            this.amyModule._amy_add_message(messagePtr);
+            if (this.amyModule._amy_add_message) {
+                this.amyModule._amy_add_message(messagePtr);
+                console.log(`✅ AMY message sent: ${message}`);
+            } else if (this.amyModule.ccall) {
+                // Try using ccall as alternative
+                this.amyModule.ccall('amy_add_message', null, ['number'], [messagePtr]);
+                console.log(`✅ AMY message sent via ccall: ${message}`);
+            } else {
+                console.warn('No AMY message function available (_amy_add_message or ccall)');
+            }
             
             // Free memory
             this.amyModule._free(messagePtr);
             
-            console.log(`AMY message: ${message}`);
         } catch (error) {
             console.error('Error sending AMY message:', error);
+            console.log('AMY module state:', {
+                hasHEAPU8: !!this.amyModule.HEAPU8,
+                hasHEAP8: !!this.amyModule.HEAP8,
+                hasMalloc: !!this.amyModule._malloc,
+                hasFree: !!this.amyModule._free,
+                hasStringToUTF8: !!this.amyModule.stringToUTF8,
+                hasAmyAddMessage: !!this.amyModule._amy_add_message,
+                hasCCall: !!this.amyModule.ccall
+            });
         }
     }
 

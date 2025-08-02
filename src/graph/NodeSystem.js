@@ -169,14 +169,16 @@ export class AmyNode {
         return port;
     }
     
-    addParameter(name, defaultValue, min = null, max = null, step = null, type = 'number') {
+    addParameter(name, defaultValue, min = null, max = null, step = null, type = 'number', options = null) {
         this.parameters[name] = {
             value: defaultValue,
             defaultValue,
             min,
             max,
             step,
-            type
+            type,
+            options,
+            label: name.charAt(0).toUpperCase() + name.slice(1).replace(/_/g, ' ')
         };
     }
     
@@ -187,7 +189,7 @@ export class AmyNode {
     setParameter(name, value) {
         if (this.parameters[name]) {
             this.parameters[name].value = value;
-            this.onParameterChanged(name, value);
+            this.onParameterChanged?.(name, value);
         }
     }
     
@@ -372,6 +374,10 @@ export class NodeGraph {
         this.connections = [];
         this.nodes.clear();
         this.emit('graphCleared');
+    }
+    
+    getNodes() {
+        return Array.from(this.nodes.values());
     }
     
     serialize() {

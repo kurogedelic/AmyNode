@@ -262,6 +262,11 @@ export class PresetBrowser {
             this.app.undoRedoManager.clear();
             this.app.updateUndoRedoButtons();
             
+            // Update audio connections after loading preset
+            setTimeout(() => {
+                this.app.updateAudioConnections();
+            }, 100);
+            
             console.log(`Loaded preset: ${preset.name}`);
             this.hide();
             

@@ -23,23 +23,57 @@ export class AudioEngine {
         
         // Try to initialize AMY WASM if not already done
         if (!this.amyInitialized) {
-            const amySuccess = await amyWASM.initialize(this.context);
-            if (amySuccess) {
-                this.amyInitialized = true;
-                // Connect AMY output to our audio graph
-                amyWASM.connect(this.masterGain);
-                console.log('✅ AMY WASM initialized successfully - accurate preview available');
-            } else {
-                console.log('⚠️ AMY WASM failed to initialize - using WebAudio approximation');
+            try {
+                console.log('🔄 Initializing audio engine...');
+                const amySuccess = await amyWASM.initialize(this.context);
+                // For now, always use WebAudio fallback
+                console.log('🎵 Using WebAudio for preview');
+                this.amyInitialized = false;
+                this.createWebAudioFallback();
+            } catch (error) {
+                console.error('AMY WASM initialization failed:', error);
+                console.log('⚠️ Using WebAudio fallback due to AMY WASM error');
+                this.createWebAudioFallback();
             }
         }
         
         this.isRunning = true;
     }
     
+    createWebAudioFallback() {
+        // Create a simple test tone for verification when AMY WASM fails
+        if (!this.testOscillator) {
+            this.testOscillator = this.context.createOscillator();
+            this.testGain = this.context.createGain();
+            
+            this.testOscillator.frequency.value = 440; // A4
+            this.testGain.gain.value = 0.1; // Low volume
+            
+            this.testOscillator.connect(this.testGain);
+            this.testGain.connect(this.masterGain);
+            
+            this.testOscillator.start();
+            // Silent start
+        }
+    }
+    
     stop() {
         this.isRunning = false;
         this.clearAllNodes();
+        
+        // Stop test oscillator if running
+        if (this.testOscillator) {
+            try {
+                this.testOscillator.stop();
+                this.testOscillator.disconnect();
+                this.testGain.disconnect();
+            } catch (error) {
+                // Oscillator may already be stopped
+            }
+            this.testOscillator = null;
+            this.testGain = null;
+            console.log('🔇 Test oscillator stopped');
+        }
     }
     
     clearAllNodes() {
@@ -58,9 +92,10 @@ export class AudioEngine {
     updateFromGraph(graph) {
         if (!this.isRunning || !this.context) return;
         
-        graph.runStep();
+        // New node system doesn't have runStep, skip it
+        // graph.runStep();
         
-        const graphNodes = graph._nodes;
+        const graphNodes = graph.getNodes();
         const existingIds = new Set(this.nodes.keys());
         const currentIds = new Set(graphNodes.map(n => n.id));
         
@@ -74,24 +109,31 @@ export class AudioEngine {
         // Update each node type
         graphNodes.forEach(node => {
             switch (node.type) {
+                case "oscillator":
                 case "amy/oscillator":
                     this.updateOscillator(node);
                     break;
+                case "lfo":
                 case "amy/lfo":
                     this.updateLFO(node);
                     break;
+                case "mixer":
                 case "amy/mixer":
                     this.updateMixer(node);
                     break;
+                case "filter":
                 case "amy/filter":
                     this.updateFilter(node);
                     break;
+                case "reverb":
                 case "amy/reverb":
                     this.updateReverb(node);
                     break;
+                case "chorus":
                 case "amy/chorus":
                     this.updateChorus(node);
                     break;
+                case "echo":
                 case "amy/echo":
                     this.updateEcho(node);
                     break;
@@ -110,6 +152,7 @@ export class AudioEngine {
                 case "amy/drums":
                     this.updateDrumMachine(node);
                     break;
+                case "output":
                 case "amy/output":
                     this.updateOutput(node);
                     break;
@@ -124,16 +167,23 @@ export class AudioEngine {
         
         // Try AMY WASM first if available
         if (this.amyInitialized && !audioNode) {
-            const amyOscId = amyWASM.createOscillator(graphNode.properties);
-            if (amyOscId >= 0) {
-                audioNode = { 
-                    amyOscId, 
-                    type: 'oscillator', 
-                    isAMY: true 
-                };
-                this.nodes.set(graphNode.id, audioNode);
-                console.log(`✅ Using AMY WASM for oscillator ${graphNode.id}`);
-                return; // Early return for AMY WASM
+            try {
+                const amyOscId = amyWASM.createOscillator(graphNode.properties);
+                if (amyOscId >= 0) {
+                    audioNode = { 
+                        amyOscId, 
+                        type: 'oscillator', 
+                        isAMY: true 
+                    };
+                    this.nodes.set(graphNode.id, audioNode);
+                    console.log(`✅ Using AMY WASM for oscillator ${graphNode.id}`);
+                    return; // Early return for AMY WASM
+                } else {
+                    console.log(`⚠️ AMY WASM oscillator creation failed, falling back to WebAudio for ${graphNode.id}`);
+                }
+            } catch (error) {
+                console.error(`❌ AMY WASM oscillator error for ${graphNode.id}:`, error);
+                console.log('🔄 Falling back to WebAudio approximation');
             }
         }
         
@@ -170,33 +220,42 @@ export class AudioEngine {
             'FM': 'sine'         // FM synthesis approximated
         };
         
-        audioNode.oscillator.type = waveTypes[graphNode.properties.wave_type] || 'sine';
+        // Get parameters from new or legacy system
+        let waveType, frequency, amplitude;
+        if (graphNode.getParameter) {
+            // New node system
+            waveType = graphNode.getParameter('wave_type') || 'SINE';
+            frequency = graphNode.getParameter('frequency') || 440;
+            amplitude = graphNode.getParameter('amplitude') || 0.5;
+        } else {
+            // Legacy properties system - handle undefined properties
+            const properties = graphNode.properties || {};
+            waveType = properties.wave_type || 'SINE';
+            frequency = properties.frequency || 440;
+            amplitude = properties.amplitude || 0.5;
+        }
         
-        // Get input values or use defaults
-        const freq = graphNode.getInputData?.(0) ?? graphNode.properties.frequency;
-        const amp = graphNode.getInputData?.(1) ?? graphNode.properties.amplitude;
+        audioNode.oscillator.type = waveTypes[waveType] || 'sine';
+        
+        // Get input values or use parameter defaults
+        const freq = graphNode.getInputData?.(0) ?? frequency;
+        const amp = graphNode.getInputData?.(1) ?? amplitude;
         const modAmount = graphNode.getInputData?.(2) ?? 0;
         
         // Update parameters - different logic for AMY vs WebAudio
         if (audioNode.isAMY) {
-            // Update AMY WASM oscillator
-            amyWASM.setFrequency(audioNode.amyOscId, freq);
-            amyWASM.setAmplitude(audioNode.amyOscId, amp);
-            
-            // Update wave type if changed
-            if (graphNode.properties.wave_type) {
-                const amyWaveType = amyWASM.mapWaveType(graphNode.properties.wave_type);
-                amyWASM.setOscillatorType(audioNode.amyOscId, amyWaveType);
-            }
-            
-            // Set filter if configured
-            if (graphNode.properties.filter_type !== "NONE") {
-                amyWASM.setFilter(
-                    audioNode.amyOscId,
-                    graphNode.properties.filter_type,
-                    graphNode.properties.filter_freq || 1000,
-                    graphNode.properties.filter_resonance || 1
-                );
+            // Update AMY WASM oscillator with error handling
+            try {
+                amyWASM.setFrequency(audioNode.amyOscId, freq);
+                amyWASM.setAmplitude(audioNode.amyOscId, amp);
+                
+                // Update wave type if changed
+                if (waveType) {
+                    const amyWaveType = amyWASM.mapWaveType(waveType);
+                    amyWASM.setOscillatorType(audioNode.amyOscId, amyWaveType);
+                }
+            } catch (error) {
+                console.error(`❌ Failed to update AMY oscillator ${audioNode.amyOscId}:`, error);
             }
         } else {
             // Update WebAudio oscillator
@@ -204,31 +263,49 @@ export class AudioEngine {
             audioNode.gain.gain.setValueAtTime(amp, this.context.currentTime);
         }
         
-        // Apply filter if configured
-        if (graphNode.properties.filter_type !== "NONE") {
+        // Apply filter if configured (only for WebAudio nodes)
+        const properties = graphNode.properties || {};
+        if (!audioNode.isAMY && audioNode.filter && properties.filter_type !== "NONE") {
             const filterTypes = {
                 'LPF': 'lowpass',
                 'HPF': 'highpass', 
                 'BPF': 'bandpass'
             };
-            audioNode.filter.type = filterTypes[graphNode.properties.filter_type] || 'lowpass';
+            audioNode.filter.type = filterTypes[properties.filter_type] || 'lowpass';
             audioNode.filter.frequency.setValueAtTime(
-                graphNode.properties.filter_freq || 1000, 
+                properties.filter_freq || 1000, 
                 this.context.currentTime
             );
             audioNode.filter.Q.setValueAtTime(
-                graphNode.properties.filter_resonance || 1, 
+                properties.filter_resonance || 1, 
                 this.context.currentTime
             );
+        } else if (audioNode.isAMY && properties.filter_type && properties.filter_type !== "NONE") {
+            // Handle AMY filter settings
+            try {
+                amyWASM.setFilter(audioNode.amyOscId, 
+                    properties.filter_type, 
+                    properties.filter_freq || 1000, 
+                    properties.filter_resonance || 1);
+            } catch (error) {
+                console.error('Failed to set AMY filter:', error);
+            }
         }
         
-        // Apply phase offset if available
-        if (graphNode.properties.phase !== undefined) {
+        // Apply phase offset if available (only for WebAudio)
+        if (!audioNode.isAMY && audioNode.oscillator && properties.phase !== undefined) {
             // WebAudio doesn't support direct phase control, but we can approximate
             audioNode.oscillator.detune.setValueAtTime(
-                graphNode.properties.phase * 100, 
+                properties.phase * 100, 
                 this.context.currentTime
             );
+        } else if (audioNode.isAMY && properties.phase !== undefined) {
+            // AMY supports direct phase control
+            try {
+                amyWASM.setPhase(audioNode.amyOscId, properties.phase);
+            } catch (error) {
+                console.error('Failed to set AMY phase:', error);
+            }
         }
     }
     
@@ -254,13 +331,14 @@ export class AudioEngine {
             this.nodes.set(graphNode.id, audioNode);
         }
         
+        const properties = graphNode.properties || {};
         audioNode.gain.gain.setValueAtTime(
-            graphNode.properties.master_gain, 
+            properties.master_gain || 1.0, 
             this.context.currentTime
         );
         
         for (let i = 0; i < 4; i++) {
-            const gainValue = graphNode.properties[`gain${i + 1}`] || 1.0;
+            const gainValue = properties[`gain${i + 1}`] || 1.0;
             audioNode.inputGains[i].gain.setValueAtTime(
                 gainValue, 
                 this.context.currentTime
@@ -438,9 +516,10 @@ export class AudioEngine {
         }
         
         // LFOs use very low frequencies
-        const frequency = Math.max(0.1, graphNode.properties.frequency || 1);
+        const properties = graphNode.properties || {};
+        const frequency = Math.max(0.1, properties.frequency || 1);
         audioNode.oscillator.frequency.setValueAtTime(frequency, this.context.currentTime);
-        audioNode.gain.gain.setValueAtTime(graphNode.properties.amplitude || 1, this.context.currentTime);
+        audioNode.gain.gain.setValueAtTime(properties.amplitude || 1, this.context.currentTime);
     }
 
     // Filter Node - Audio processing filter
@@ -464,13 +543,14 @@ export class AudioEngine {
             'BPF': 'bandpass'
         };
         
-        audioNode.filter.type = filterTypes[graphNode.properties.filter_type] || 'lowpass';
+        const properties = graphNode.properties || {};
+        audioNode.filter.type = filterTypes[properties.filter_type] || 'lowpass';
         audioNode.filter.frequency.setValueAtTime(
-            graphNode.properties.frequency || 1000,
+            properties.frequency || 1000,
             this.context.currentTime
         );
         audioNode.filter.Q.setValueAtTime(
-            graphNode.properties.resonance || 1,
+            properties.resonance || 1,
             this.context.currentTime
         );
     }
@@ -503,7 +583,8 @@ export class AudioEngine {
             this.nodes.set(graphNode.id, audioNode);
         }
         
-        const level = graphNode.properties.level || 0.3;
+        const properties = graphNode.properties || {};
+        const level = properties.level || 0.3;
         audioNode.dryGain.gain.setValueAtTime(1 - level, this.context.currentTime);
         audioNode.wetGain.gain.setValueAtTime(level, this.context.currentTime);
     }
@@ -538,7 +619,7 @@ export class AudioEngine {
             this.nodes.set(graphNode.id, audioNode);
         }
         
-        const props = graphNode.properties;
+        const props = graphNode.properties || {};
         audioNode.delay.delayTime.setValueAtTime(props.max_delay || 0.02, this.context.currentTime);
         audioNode.lfo.frequency.setValueAtTime(props.lfo_freq || 0.5, this.context.currentTime);
         audioNode.lfoGain.gain.setValueAtTime(props.depth || 0.002, this.context.currentTime);
@@ -573,7 +654,7 @@ export class AudioEngine {
             this.nodes.set(graphNode.id, audioNode);
         }
         
-        const props = graphNode.properties;
+        const props = graphNode.properties || {};
         audioNode.delay.delayTime.setValueAtTime(props.delay_time || 0.3, this.context.currentTime);
         audioNode.feedback.gain.setValueAtTime(props.feedback || 0.3, this.context.currentTime);
         audioNode.wetGain.gain.setValueAtTime(props.level || 0.5, this.context.currentTime);
@@ -601,12 +682,13 @@ export class AudioEngine {
         }
         
         // BETA: Basic frequency/amplitude control
+        const properties = graphNode.properties || {};
         audioNode.oscillator.frequency.setValueAtTime(
-            graphNode.properties.base_freq || 440,
+            properties.base_freq || 440,
             this.context.currentTime
         );
         audioNode.gain.gain.setValueAtTime(
-            graphNode.properties.amplitude || 0.5,
+            properties.amplitude || 0.5,
             this.context.currentTime
         );
     }
@@ -629,8 +711,9 @@ export class AudioEngine {
         }
         
         // BETA: Basic step advancement (would need proper clock sync)
+        const properties = graphNode.properties || {};
         if (Date.now() - audioNode.lastTick > 250) { // 240 BPM approximate
-            audioNode.currentStep = (audioNode.currentStep + 1) % graphNode.properties.steps;
+            audioNode.currentStep = (audioNode.currentStep + 1) % (properties.steps || 16);
             audioNode.lastTick = Date.now();
         }
     }
@@ -639,11 +722,12 @@ export class AudioEngine {
     updateClock(graphNode) {
         let audioNode = this.nodes.get(graphNode.id);
         
+        const properties = graphNode.properties || {};
         if (!audioNode) {
             audioNode = { 
                 type: 'clock', 
                 beta: true,
-                interval: 60000 / (graphNode.properties.bpm || 120),
+                interval: 60000 / (properties.bpm || 120),
                 lastTick: 0
             };
             this.nodes.set(graphNode.id, audioNode);
@@ -651,18 +735,19 @@ export class AudioEngine {
             console.warn('BETA: Clock node - basic timing only');
         }
         
-        audioNode.interval = 60000 / (graphNode.properties.bpm || 120);
+        audioNode.interval = 60000 / (properties.bpm || 120);
     }
 
     // Keyboard Input - BETA implementation  
     updateKeyboard(graphNode) {
         let audioNode = this.nodes.get(graphNode.id);
         
+        const properties = graphNode.properties || {};
         if (!audioNode) {
             audioNode = { 
                 type: 'keyboard', 
                 beta: true,
-                currentNote: graphNode.properties.current_note || 60,
+                currentNote: properties.current_note || 60,
                 gateOn: false
             };
             this.nodes.set(graphNode.id, audioNode);
@@ -708,8 +793,9 @@ export class AudioEngine {
         }
         
         // BETA: Basic volume control
+        const properties = graphNode.properties || {};
         audioNode.gain.gain.setValueAtTime(
-            graphNode.properties.volume || 0.3,
+            properties.volume || 0.3,
             this.context.currentTime
         );
     }
@@ -738,19 +824,24 @@ export class AudioEngine {
             console.log('✅ Created Audio Output node with input routing');
         }
         
-        // Update output parameters
-        const volume = graphNode.properties.master_volume || 1.0;
+        // Update output parameters - handle undefined properties
+        const properties = graphNode.properties || {};
+        const volume = properties.master_volume || 1.0;
         audioNode.outputGain.gain.setValueAtTime(volume, this.context.currentTime);
         
         // Store output settings for AMY WASM
         if (this.amyInitialized) {
-            // Set global AMY volume
-            const amyVolume = Math.min(1.0, volume);
-            amyWASM.sendMessage(`g${amyVolume.toFixed(3)}`); // Global volume command
-            
-            // Set stereo/mono mode if supported
-            if (graphNode.properties.stereo_mode) {
-                console.log('📻 AMY Output: Stereo mode enabled');
+            try {
+                // Set global AMY volume
+                const amyVolume = Math.min(1.0, volume);
+                amyWASM.sendMessage(`g${amyVolume.toFixed(3)}`); // Global volume command
+                
+                // Set stereo/mono mode if supported
+                if (properties.stereo_mode) {
+                    console.log('📻 AMY Output: Stereo mode enabled');
+                }
+            } catch (error) {
+                console.error('❌ Failed to set AMY output parameters:', error);
             }
         }
     }

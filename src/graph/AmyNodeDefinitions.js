@@ -28,14 +28,12 @@ export class OscillatorNode extends AmyNodeBase {
         this.addOutput('Audio', 'AUDIO');
         
         // Parameters
-        this.addParameter('wave_type', 'SINE', null, null, null, 'select');
+        const waveOptions = ['SINE', 'PULSE', 'SAW_DOWN', 'SAW_UP', 'TRIANGLE', 'NOISE', 'KS', 'PCM', 'ALGO', 'PARTIAL'];
+        this.addParameter('wave_type', 'SINE', null, null, null, 'select', waveOptions);
         this.addParameter('frequency', 440, 20, 20000, 1);
         this.addParameter('amplitude', 0.5, 0, 1, 0.01);
         this.addParameter('phase', 0, 0, 1, 0.01);
         this.addParameter('duty', 0.5, 0, 1, 0.01);
-        
-        // Wave type options
-        this.waveTypes = ['SINE', 'PULSE', 'SAW_DOWN', 'SAW_UP', 'TRIANGLE', 'NOISE', 'KS', 'PCM', 'ALGO', 'PARTIAL'];
     }
     
     generateCode() {
@@ -74,11 +72,10 @@ export class FilterNode extends AmyNodeBase {
         this.addOutput('Audio Out', 'AUDIO');
         
         // Parameters
-        this.addParameter('filter_type', 'LPF', null, null, null, 'select');
+        const filterOptions = ['LPF', 'HPF', 'BPF'];
+        this.addParameter('filter_type', 'LPF', null, null, null, 'select', filterOptions);
         this.addParameter('filter_freq', 1000, 20, 20000, 1);
         this.addParameter('filter_resonance', 1.0, 0.1, 20, 0.1);
-        
-        this.filterTypes = ['LPF', 'HPF', 'BPF'];
     }
     
     generateCode() {
@@ -145,9 +142,8 @@ export class LFONode extends AmyNodeBase {
         // Parameters
         this.addParameter('frequency', 1, 0.01, 20, 0.01);
         this.addParameter('amplitude', 1, 0, 1, 0.01);
-        this.addParameter('wave_type', 'SINE', null, null, null, 'select');
-        
-        this.waveTypes = ['SINE', 'TRIANGLE', 'SAW_DOWN', 'SAW_UP', 'PULSE'];
+        const lfoWaveOptions = ['SINE', 'TRIANGLE', 'SAW_DOWN', 'SAW_UP', 'PULSE'];
+        this.addParameter('wave_type', 'SINE', null, null, null, 'select', lfoWaveOptions);
     }
     
     generateCode() {
