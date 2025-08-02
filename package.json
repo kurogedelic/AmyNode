@@ -1,6 +1,6 @@
 {
   "name": "amynode",
-  "version": "1.0.0",
+  "version": "0.1.0-alpha",
   "description": "Visual patch editor for AMY audio library with Arduino code generation",
   "main": "index.js",
   "scripts": {

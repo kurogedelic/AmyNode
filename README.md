@@ -1,6 +1,8 @@
-# AmyNode
+# AmyNode (Alpha)
 
 A visual patch editor for the [AMY audio synthesis library](https://github.com/bwhitman/amy), enabling intuitive sound design through a node-based interface.
+
+> ⚠️ **Alpha Version**: This is an early release. Features may change and bugs may exist.
 
 ## Features
 
@@ -96,6 +98,11 @@ AmyNode is built with:
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
+
+As this is an alpha release, we especially appreciate:
+- Bug reports with detailed reproduction steps
+- Feature suggestions and feedback
+- Code contributions to improve stability
 
 ## License
 
