@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AmyNode - Visual Audio Patch Editor</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <script type="module" crossorigin src="/AmyNode/assets/index-Dj6G_IfN.js"></script>
+  <link rel="stylesheet" crossorigin href="/AmyNode/assets/index-B5maUBKM.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <div class="header-left">
+                <h1 class="app-title">AmyNode</h1>
+                <div class="status-indicators">
+                    <div id="amy-status" class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span class="status-text">AMY WASM: Loading...</span>
+                    </div>
+                    <div id="audio-status" class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Audio: Stopped</span>
+                    </div>
+                </div>
+            </div>
+            <div class="header-controls">
+                <button id="undo-btn" class="control-btn" disabled><i class="ph ph-arrow-u-up-left"></i> Undo</button>
+                <button id="redo-btn" class="control-btn" disabled><i class="ph ph-arrow-u-up-right"></i> Redo</button>
+                <div class="control-separator"></div>
+                <button id="play-btn" class="control-btn"><i class="ph ph-play"></i> Play</button>
+                <button id="stop-btn" class="control-btn"><i class="ph ph-stop"></i> Stop</button>
+                <div class="control-separator"></div>
+                <button id="presets-btn" class="control-btn"><i class="ph ph-folder-open"></i> Presets</button>
+                <button id="save-btn" class="control-btn"><i class="ph ph-floppy-disk"></i> Save</button>
+                <button id="load-btn" class="control-btn"><i class="ph ph-folder"></i> Load</button>
+                <button id="export-btn" class="control-btn"><i class="ph ph-download"></i> Export Code <span class="beta-label">BETA</span></button>
+                <input type="file" id="file-input" accept=".json" style="display: none;">
+            </div>
+        </header>
+        
+        <main class="main-content">
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2 class="sidebar-title">Nodes</h2>
+                    <div class="search-container">
+                        <input type="text" id="node-search" class="search-input" placeholder="Search nodes...">
+                        <span class="search-icon">🔍</span>
+                    </div>
+                </div>
+                
+                <div class="node-list-container">
+                    <!-- Generators -->
+                    <div class="node-item" data-node-type="oscillator" data-category="generator" data-keywords="oscillator sound wave audio sine amy synthesis">
+                        <div class="node-icon generator">🎵</div>
+                        <div class="node-content">
+                            <span class="node-name">AMY Oscillator</span>
+                            <span class="node-description">Multi-type sound generator</span>
+                        </div>
+                    </div>
+                    
+                    <div class="node-item" data-node-type="sampleplayer" data-category="generator" data-keywords="sample player pcm audio wav drum">
+                        <div class="node-icon generator">♪</div>
+                        <div class="node-content">
+                            <span class="node-name">Sample Player <span class="beta-label">BETA</span></span>
+                            <span class="node-description">PCM sample playback</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Processors -->
+                    <div class="node-item" data-node-type="filter" data-category="processor" data-keywords="filter frequency lpf hpf bpf audio processing">
+                        <div class="node-icon processor">🔽</div>
+                        <div class="node-content">
+                            <span class="node-name">Filter</span>
+                            <span class="node-description">Audio frequency filter</span>
+                        </div>
+                    </div>
+                    
+                    <div class="node-item" data-node-type="mixer" data-category="processor" data-keywords="mixer audio channel volume">
+                        <div class="node-icon processor">🎛️</div>
+                        <div class="node-content">
+                            <span class="node-name">Mixer</span>
+                            <span class="node-description">4-channel mixer</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Effects -->
+                    <div class="node-item" data-node-type="reverb" data-category="processor" data-keywords="reverb echo ambient space effect">
+                        <div class="node-icon processor">🔊</div>
+                        <div class="node-content">
+                            <span class="node-name">Reverb</span>
+                            <span class="node-description">Spatial reverb effect</span>
+                        </div>
+                    </div>
+                    
+                    <div class="node-item" data-node-type="chorus" data-category="processor" data-keywords="chorus modulation lfo delay effect">
+                        <div class="node-icon processor">🌊</div>
+                        <div class="node-content">
+                            <span class="node-name">Chorus</span>
+                            <span class="node-description">Chorus modulation effect</span>
+                        </div>
+                    </div>
+                    
+                    <div class="node-item" data-node-type="echo" data-category="processor" data-keywords="echo delay feedback repeat effect">
+                        <div class="node-icon processor">📢</div>
+                        <div class="node-content">
+                            <span class="node-name">Echo</span>
+                            <span class="node-description">Digital delay effect</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Modulation -->
+                    <div class="node-item" data-node-type="envelope" data-category="modulation" data-keywords="envelope adsr modulation attack decay">
+                        <div class="node-icon modulation">📈</div>
+                        <div class="node-content">
+                            <span class="node-name">Envelope</span>
+                            <span class="node-description">ADSR envelope</span>
+                        </div>
+                    </div>
+                    
+                    <div class="node-item" data-node-type="lfo" data-category="modulation" data-keywords="lfo oscillator modulation frequency low">
+                        <div class="node-icon modulation">🌀</div>
+                        <div class="node-content">
+                            <span class="node-name">LFO</span>
+                            <span class="node-description">Low frequency oscillator</span>
+                        </div>
+                    </div>
+                    
+                    <div class="node-item" data-node-type="modmatrix" data-category="modulation" data-keywords="modulation matrix routing crossfade">
+                        <div class="node-icon modulation">🎛️</div>
+                        <div class="node-content">
+                            <span class="node-name">Mod Matrix</span>
+                            <span class="node-description">Modulation routing</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Sequencing -->
+                    <div class="node-item" data-node-type="sequencer" data-category="modulation" data-keywords="sequencer step pattern melody sequence">
+                        <div class="node-icon modulation">🔢</div>
+                        <div class="node-content">
+                            <span class="node-name">Sequencer <span class="beta-label">BETA</span></span>
+                            <span class="node-description">Step sequencer</span>
+                        </div>
+                    </div>
+                    
+                    <div class="node-item" data-node-type="clock" data-category="modulation" data-keywords="clock tempo bpm timing master">
+                        <div class="node-icon modulation">🕒</div>
+                        <div class="node-content">
+                            <span class="node-name">Clock <span class="beta-label">BETA</span></span>
+                            <span class="node-description">Master clock generator</span>
+                        </div>
+                    </div>
+                    
+                    <div class="node-item" data-node-type="drums" data-category="generator" data-keywords="drums drum machine pattern rhythm beat">
+                        <div class="node-icon generator">🥁</div>
+                        <div class="node-content">
+                            <span class="node-name">Drum Machine <span class="beta-label">BETA</span></span>
+                            <span class="node-description">Pattern-based drums</span>
+                        </div>
+                    </div>
+                    
+                    <div class="node-item" data-node-type="keyboard" data-category="input" data-keywords="keyboard piano keys note midi input">
+                        <div class="node-icon input">🎹</div>
+                        <div class="node-content">
+                            <span class="node-name">Keyboard <span class="beta-label">BETA</span></span>
+                            <span class="node-description">Virtual keyboard</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Input/Output -->
+                    <div class="node-item" data-node-type="adc" data-category="input" data-keywords="adc analog input sensor potentiometer">
+                        <div class="node-icon input">🎚️</div>
+                        <div class="node-content">
+                            <span class="node-name">ADC Input</span>
+                            <span class="node-description">Analog to digital</span>
+                        </div>
+                    </div>
+                    
+                    <div class="node-item" data-node-type="gpio" data-category="input" data-keywords="gpio digital pin input output">
+                        <div class="node-icon input">🔌</div>
+                        <div class="node-content">
+                            <span class="node-name">GPIO Pin</span>
+                            <span class="node-description">Digital I/O</span>
+                        </div>
+                    </div>
+                    
+                    <div class="node-item" data-node-type="output" data-category="output" data-keywords="output dac audio speaker headphone">
+                        <div class="node-icon output">🔊</div>
+                        <div class="node-content">
+                            <span class="node-name">Audio Output</span>
+                            <span class="node-description">DAC audio out</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Utility -->
+                    <div class="node-item" data-node-type="map" data-category="utility" data-keywords="map range scale utility transform">
+                        <div class="node-icon utility">🗺️</div>
+                        <div class="node-content">
+                            <span class="node-name">Map Range</span>
+                            <span class="node-description">Value mapping</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+            
+            <div class="canvas-container">
+                <canvas id="graph-canvas"></canvas>
+            </div>
+            
+            <aside class="properties-panel">
+                <h2 class="panel-title">Properties</h2>
+                <div id="properties-content" class="properties-content">
+                    <p class="placeholder-text">Select a node to edit properties</p>
+                </div>
+            </aside>
+        </main>
+        
+        <div id="code-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Generated Code</h2>
+                    <button class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <pre><code id="generated-code"></code></pre>
+                </div>
+                <div class="modal-footer">
+                    <button id="copy-code-btn" class="control-btn">📋 Copy Code</button>
+                    <button id="download-code-btn" class="control-btn">💾 Download</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Comprehensive fix for LiteGraph window reference issues
+        (function() {
+            // Create all possible window references LiteGraph might use
+            const windowRefs = ['window2', 'ref_window2', 'ref_window', 'global'];
+            
+            windowRefs.forEach(function(ref) {
+                if (!(ref in window)) {
+                    Object.defineProperty(window, ref, {
+                        get: function() { 
+                            // Return a proxy that handles all property access safely
+                            return new Proxy(window, {
+                                get: function(target, prop) {
+                                    if (prop === 'document') {
+                                        // Return a safe document proxy
+                                        return new Proxy(document, {
+                                            get: function(docTarget, docProp) {
+                                                if (docProp === 'activeElement') {
+                                                    try {
+                                                        return docTarget.activeElement || docTarget.body;
+                                                    } catch (e) {
+                                                        return docTarget.body;
+                                                    }
+                                                }
+                                                return docTarget[docProp];
+                                            }
+                                        });
+                                    }
+                                    if (prop === 'requestAnimationFrame') {
+                                        return window.requestAnimationFrame ? 
+                                            window.requestAnimationFrame.bind(window) : 
+                                            function(cb) { return setTimeout(cb, 16); };
+                                    }
+                                    return target[prop];
+                                }
+                            });
+                        },
+                        set: function() { /* ignore */ },
+                        configurable: true
+                    });
+                }
+            });
+            
+            // Override global error handler to suppress LiteGraph errors
+            const originalError = window.onerror;
+            window.onerror = function(msg, url, lineNo, columnNo, error) {
+                if (msg && (msg.includes('ref_window2') || msg.includes('window2'))) {
+                    console.warn('Suppressed LiteGraph window reference error');
+                    return true; // Prevent error propagation
+                }
+                if (originalError) {
+                    return originalError(msg, url, lineNo, columnNo, error);
+                }
+                return false;
+            };
+        })();
+    </script>
+</body>
+</html>
