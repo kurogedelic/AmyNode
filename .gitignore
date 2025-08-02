@@ -29,6 +29,10 @@ Thumbs.db
 # AMY library (submodule or separate repo)
 amy_lib/
 
+# Development files
+*.map
+.vite/
+
 # Temporary files
 *.tmp
 *.temp
