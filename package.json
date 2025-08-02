@@ -8,9 +8,9 @@
     "build": "vite build",
     "preview": "vite preview"
   },
-  "keywords": ["audio", "visual-programming", "arduino", "amy"],
-  "author": "",
-  "license": "MIT",
+  "keywords": ["audio", "visual-programming", "arduino", "amy", "synthesizer"],
+  "author": "Leo Kuroshita <kurogedelic@x.com>",
+  "license": "LGPL-3.0",
   "devDependencies": {
     "vite": "^5.0.0"
   },

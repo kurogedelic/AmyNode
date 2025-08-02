@@ -36,3 +36,6 @@ amy_lib/
 # Logs
 logs/
 *.log
+
+# Claude configuration
+CLAUDE.md
